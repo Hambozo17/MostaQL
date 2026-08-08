@@ -8,7 +8,7 @@ def test_init_db_seeds_the_current_mostaql_top_level_categories(tmp_path, monkey
     engine = create_engine(f"sqlite:///{(tmp_path / 'categories.db').as_posix()}")
     database.Base.metadata.create_all(engine)
     monkeypatch.setattr(database, "engine", engine)
-    monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=engine))
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(autocommit=False, autoflush=False, bind=engine))
 
     database.init_db()
 
