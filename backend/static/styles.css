@@ -350,6 +350,10 @@ input[type="email"]:focus {
     background: var(--brand-secondary);
 }
 
+.category-item[hidden] {
+    display: none;
+}
+
 .category-item:hover {
     border-color: var(--brand-primary);
     background: var(--bg-muted);
