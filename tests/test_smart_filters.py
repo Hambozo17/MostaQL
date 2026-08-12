@@ -82,6 +82,13 @@ def test_budget_filter_compares_the_upper_end_and_boundaries_are_inclusive():
     assert not _job_matches_user(user, make_job(budget_min_usd=100, budget_max_usd=249), NOW)
 
 
+def test_hiring_rate_decimal_threshold_is_inclusive():
+    user = make_user(min_hiring_rate=50.01)
+
+    assert _job_matches_user(user, make_job(hiring_rate=50.01), NOW)
+    assert not _job_matches_user(user, make_job(hiring_rate=50.00), NOW)
+
+
 def test_all_enabled_filters_combine_with_and():
     user = make_user(
         min_hiring_rate=50,

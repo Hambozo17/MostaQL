@@ -1,6 +1,8 @@
 """
 Configuration management using environment variables.
 """
+from typing import Optional
+
 from pydantic_settings import BaseSettings
 
 
@@ -25,8 +27,12 @@ class Settings(BaseSettings):
     environment: str = "development"
 
     scraper_interval_minutes: int = 30
-    scraper_poll_interval_minutes: int = 2
+    scraper_poll_interval_minutes: float = 2
+    # When set, this takes precedence over the legacy minutes setting and
+    # allows fast-alert deployments to poll at sub-minute intervals.
+    scraper_poll_interval_seconds: Optional[float] = None
     scraper_quick_check_count: int = 5
+    scraper_max_pages: int = 10
     mostaql_base_url: str = "https://mostaql.com"
     http_request_timeout: int = 10
     scraper_max_workers: int = 4
