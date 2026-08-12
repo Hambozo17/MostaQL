@@ -99,6 +99,32 @@ def test_scrape_category_stops_after_an_already_known_page(monkeypatch):
     assert requested == [first_url, second_url]
 
 
+def test_scrape_category_does_not_stop_on_empty_page_with_next(monkeypatch):
+    first_url = "https://mostaql.test/projects?category=development&sort=latest"
+    second_url = "https://mostaql.test/projects?category=development&page=2"
+    requested = []
+    responses = {
+        first_url: _Response(_listing_html([], "/projects?category=development&page=2")),
+        second_url: _Response(_listing_html([("مشروع جديد", "/project/new")])),
+    }
+
+    def get(url, **kwargs):
+        requested.append(url)
+        return responses[url]
+
+    monkeypatch.setattr(scraper.requests, "get", get)
+    monkeypatch.setattr(scraper.settings, "mostaql_base_url", "https://mostaql.test")
+
+    jobs = scraper.scrape_category(
+        1,
+        first_url,
+        known_urls={"https://mostaql.test/project/known-1"},
+    )
+
+    assert [job["url"] for job in jobs] == ["https://mostaql.test/project/new"]
+    assert requested == [first_url, second_url]
+
+
 def test_same_title_projects_are_not_deduplicated(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

@@ -2,6 +2,7 @@
 Background scheduler for periodic job scraping
 """
 from datetime import datetime
+from math import ceil
 from threading import Lock
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -100,7 +101,7 @@ def start_scheduler():
         # every missed interval; the next scheduled run catches up normally.
         max_instances=1,
         coalesce=True,
-        misfire_grace_time=max(30, int(interval_seconds)),
+        misfire_grace_time=max(30, ceil(interval_seconds)),
     )
     
     scheduler.start()
@@ -117,4 +118,3 @@ def shutdown_scheduler(scheduler):
     if scheduler and scheduler.running:
         scheduler.shutdown(wait=True)
         app_logger.info("✓ Scheduler shut down")
-

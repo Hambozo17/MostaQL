@@ -219,7 +219,7 @@ def scrape_category(
             # the database, older pages cannot contain a missed new project.
             # This keeps normal polling to one or two requests while still
             # walking through every page of a burst of new projects.
-            if known_urls is not None and not page_has_unknown:
+            if known_urls is not None and page_jobs and not page_has_unknown:
                 break
             current_url = next_url
 
@@ -903,4 +903,3 @@ def scrape_all_categories() -> Dict[str, int]:
         
     finally:
         db.close()
-

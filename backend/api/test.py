@@ -15,7 +15,6 @@ from backend.scheduler import run_scraper_job
 from backend.database import get_db, Job, Category
 from backend.services.scraper import (
     quick_check_category,
-    scrape_category_with_logging,
     _job_exists_in_db,
     poll_category,
 )
@@ -455,4 +454,3 @@ async def test_send_email(request: TestEmailRequest, db: Session = Depends(get_d
             "status": "error",
             "message": str(e)
         }
-
