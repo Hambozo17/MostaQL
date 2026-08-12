@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from loguru import logger
@@ -66,8 +66,7 @@ def parse_job_listing(link_element) -> Optional[Dict[str, str]]:
         if '/project/' not in url:
             return None
         
-        if not url.startswith('http'):
-            url = f"https://mostaql.com{url}"
+        url = urljoin(settings.mostaql_base_url, url)
         
         title = link_element.get_text(strip=True)
         if not title:
@@ -83,107 +82,149 @@ def parse_job_listing(link_element) -> Optional[Dict[str, str]]:
         return None
 
 
-def quick_check_category(category_id: int, category_url: str) -> Optional[Dict[str, str]]:
+def _parse_project_rows(tbody) -> List[Dict[str, str]]:
+    jobs = []
+    if not tbody:
+        return jobs
+
+    for row in tbody.find_all('tr', class_='project-row'):
+        try:
+            title_link = row.select_one('h2 a')
+            job = parse_job_listing(title_link)
+            if job:
+                jobs.append(job)
+        except Exception as exc:
+            logger.debug(f"Error parsing project row: {exc}")
+    return jobs
+
+
+def _next_page_url(soup: BeautifulSoup, current_url: str) -> Optional[str]:
+    """Return the site's next-page link when pagination is present."""
+    selectors = (
+        'a[rel="next"]',
+        'a.next',
+        'li.next a',
+        'a[aria-label*="التالي"]',
+        'a[aria-label*="Next"]',
+    )
+    for selector in selectors:
+        link = soup.select_one(selector)
+        if link and link.get('href'):
+            return urljoin(current_url, link['href'])
+
+    # Mostaql has used a translated link label in different page templates.
+    for link in soup.find_all('a', href=True):
+        label = ' '.join(link.get_text(' ', strip=True).split()).lower()
+        if label in {'التالي', 'الصفحة التالية', 'next', 'next page'}:
+            return urljoin(current_url, link['href'])
+
+    # Some templates expose only numbered links (without rel="next"). Pick
+    # the smallest page number greater than the current one.
+    current_page_values = parse_qs(urlparse(current_url).query).get('page', ['1'])
     try:
-        headers = get_headers()
-        response = requests.get(
-            category_url,
-            headers=headers,
-            timeout=settings.http_request_timeout,
-            allow_redirects=True
+        current_page = int(current_page_values[0])
+    except (TypeError, ValueError):
+        current_page = 1
+
+    numbered_pages = []
+    for link in soup.find_all('a', href=True):
+        candidate_url = urljoin(current_url, link['href'])
+        page_values = parse_qs(urlparse(candidate_url).query).get('page')
+        if not page_values:
+            continue
+        try:
+            page_number = int(page_values[0])
+        except (TypeError, ValueError):
+            continue
+        if page_number > current_page:
+            numbered_pages.append((page_number, candidate_url))
+    if numbered_pages:
+        return min(numbered_pages, key=lambda item: item[0])[1]
+    return None
+
+
+def _scrape_category_page(
+    category_id: int,
+    category_url: str,
+) -> Tuple[List[Dict[str, str]], Optional[str]]:
+    headers = get_headers()
+    response = requests.get(
+        category_url,
+        headers=headers,
+        timeout=settings.http_request_timeout,
+        allow_redirects=True,
+    )
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.content, 'lxml')
+    tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
+    if not tbody:
+        logger.warning(
+            f"No tbody with data-filter='collection' found for category {category_id}"
         )
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'lxml')
-        tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
-        
-        if not tbody:
-            return None
-        
-        project_rows = tbody.find_all('tr', class_='project-row', limit=1)
-        
-        if not project_rows:
-            return None
-        
-        first_row = project_rows[0]
-        title_link = first_row.find('h2').find('a') if first_row.find('h2') else None
-        
-        if not title_link:
-            return None
-        
-        title = title_link.get_text(strip=True)
-        url = title_link.get('href', '')
-        
-        if not title or not url:
-            return None
-        
-        if not url.startswith('http'):
-            url = f"{settings.mostaql_base_url}{url}"
-        
-        return {
-            'title': title,
-            'url': url
-        }
-        
+        return [], None
+
+    jobs = _parse_project_rows(tbody)
+    return jobs, _next_page_url(soup, category_url)
+
+
+def quick_check_category(category_id: int, category_url: str) -> Optional[Dict[str, str]]:
+    """Return the first visible project for the diagnostic endpoint.
+
+    Polling no longer relies on this single row; it always scans the listing so
+    projects that arrive between checks cannot be hidden behind an unchanged
+    first row.
+    """
+    try:
+        jobs, _ = _scrape_category_page(category_id, category_url)
+        return jobs[0] if jobs else None
     except Exception as e:
         logger.debug(f"Quick check failed for category {category_id}: {e}")
         return None
 
 
-def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]:
-    jobs = []
-    
+def scrape_category(
+    category_id: int,
+    category_url: str,
+    known_urls: Optional[set[str]] = None,
+) -> List[Dict[str, str]]:
+    jobs: List[Dict[str, str]] = []
+    seen_urls = set()
+    visited_pages = set()
+    max_pages = max(1, int(getattr(settings, 'scraper_max_pages', 10)))
+    current_url = category_url
+
     try:
-        headers = get_headers()
-        logger.info(f"Scraping {category_url}")
-        
-        response = requests.get(
-            category_url,
-            headers=headers,
-            timeout=settings.http_request_timeout,
-            allow_redirects=True
-        )
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'lxml')
-        
-        tbody = soup.find('tbody', attrs={'data-filter': 'collection'})
-        
-        if not tbody:
-            logger.warning("No tbody with data-filter='collection' found on page")
-            return jobs
-        
-        project_rows = tbody.find_all('tr', class_='project-row')
-        logger.info(f"Found {len(project_rows)} project rows")
-        
-        for row in project_rows:
-            try:
-                title_link = row.find('h2').find('a') if row.find('h2') else None
-                
-                if not title_link:
-                    continue
-                
-                title = title_link.get_text(strip=True)
-                url = title_link.get('href', '')
-                
-                if not title or not url:
-                    continue
-                
-                if not url.startswith('http'):
-                    url = f"{settings.mostaql_base_url}{url}"
-                
-                jobs.append({
-                    'title': title,
-                    'url': url
-                })
-                
-            except Exception as e:
-                logger.debug(f"Error parsing project row: {e}")
-                continue
-        
+        logger.info(f"Scraping {category_url} (up to {max_pages} page(s))")
+        for page_number in range(1, max_pages + 1):
+            if not current_url or current_url in visited_pages:
+                break
+            visited_pages.add(current_url)
+
+            page_jobs, next_url = _scrape_category_page(category_id, current_url)
+            logger.info(
+                f"Found {len(page_jobs)} project rows on category {category_id} page {page_number}"
+            )
+            page_has_unknown = False
+            for job in page_jobs:
+                if job['url'] not in seen_urls:
+                    seen_urls.add(job['url'])
+                    jobs.append(job)
+                if known_urls is not None and job['url'] not in known_urls:
+                    page_has_unknown = True
+
+            if not next_url or next_url in visited_pages:
+                break
+            # Listings are newest-first. Once a complete page is already in
+            # the database, older pages cannot contain a missed new project.
+            # This keeps normal polling to one or two requests while still
+            # walking through every page of a burst of new projects.
+            if known_urls is not None and page_jobs and not page_has_unknown:
+                break
+            current_url = next_url
+
         logger.info(f"Successfully parsed {len(jobs)} jobs from category {category_id}")
         return jobs
-        
     except requests.Timeout:
         logger.error(f"Timeout scraping category {category_id}")
         raise
@@ -196,11 +237,10 @@ def scrape_category(category_id: int, category_url: str) -> List[Dict[str, str]]
 
 
 def _job_exists_in_db(db, job_data: Dict[str, str]) -> bool:
-    content_hash = hash_content(job_data['title'])
-    existing = db.query(Job).filter(
-        (Job.content_hash == content_hash) | (Job.url == job_data['url'])
-    ).first()
-    return existing is not None
+    # A title is not a stable project identity: clients frequently reuse titles
+    # such as "مطلوب مبرمج". The canonical Mostaql project URL is unique and
+    # must be the only deduplication key used for new alerts.
+    return db.query(Job.id).filter(Job.url == job_data['url']).first() is not None
 
 
 def save_new_jobs(category_id: int, jobs: List[Dict[str, str]]) -> List[Job]:
@@ -208,7 +248,11 @@ def save_new_jobs(category_id: int, jobs: List[Dict[str, str]]) -> List[Job]:
     new_jobs = []
     
     try:
+        seen_urls = set()
         for job_data in jobs:
+            if job_data['url'] in seen_urls:
+                continue
+            seen_urls.add(job_data['url'])
             if _job_exists_in_db(db, job_data):
                 logger.debug(f"Job already exists: {job_data['title'][:50]}")
                 continue
@@ -289,17 +333,10 @@ def poll_category(category_id: int) -> List[Job]:
             logger.error(f"Category {category_id} not found")
             return []
         
-        first_job = quick_check_category(category_id, category.mostaql_url)
-        
-        if not first_job:
-            logger.debug(f"Category {category.name} (ID {category_id}): No jobs found in quick check")
-            return []
-        
-        if _job_exists_in_db(db, first_job):
-            logger.debug(f"Category {category.name} (ID {category_id}): First job unchanged, skipping full scrape")
-            return []
-        
-        logger.info(f"Category {category.name} (ID {category_id}): New job detected, doing full scrape")
+        # Always scan the listing. Checking only the first row loses projects
+        # when several are published between polls or when Mostaql reorders the
+        # feed while an earlier project remains at the top.
+        logger.info(f"Polling all visible projects for category {category.name} (ID {category_id})")
         return scrape_category_with_logging(category_id)
         
     except Exception as e:
@@ -482,7 +519,11 @@ def parse_project_details(html: str, now: Optional[datetime] = None) -> ProjectD
     widget = soup.find("div", attrs={"data-type": "employer_widget"})
 
     hiring_rate_text = _extract_table_value(widget, "معدل التوظيف")
-    hiring_rate = _parse_decimal(hiring_rate_text) if hiring_rate_text and "%" in hiring_rate_text else None
+    hiring_rate = (
+        _parse_decimal(hiring_rate_text)
+        if hiring_rate_text and re.search(r"[%٪％]", hiring_rate_text)
+        else None
+    )
     budget_min, budget_max = _parse_budget(_extract_meta_value(soup, "الميزانية"))
 
     profile_url = None
@@ -775,7 +816,17 @@ def scrape_category_with_logging(category_id: int) -> List[Job]:
         
         logger.info(f"Starting full scrape for category: {category.name}")
         
-        jobs_data = scrape_category(category_id, category.mostaql_url)
+        known_urls = {
+            row[0]
+            for row in db.query(Job.url)
+            .filter(Job.category_id == category_id)
+            .all()
+        }
+        jobs_data = scrape_category(
+            category_id,
+            category.mostaql_url,
+            known_urls=known_urls,
+        )
         
         new_jobs = save_new_jobs(category_id, jobs_data)
         
@@ -852,4 +903,3 @@ def scrape_all_categories() -> Dict[str, int]:
         
     finally:
         db.close()
-

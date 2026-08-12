@@ -89,6 +89,18 @@ def test_missing_widgets_and_uncalculated_rate_remain_unknown():
     assert missing_widget.ongoing_communications is None
 
 
+def test_parse_hiring_rate_with_arabic_percent_sign():
+    details = parse_project_details(
+        """
+        <div data-type="employer_widget">
+          <table><tr><td>معدل التوظيف</td><td>٥٠٫٠١٪</td></tr></table>
+        </div>
+        """
+    )
+
+    assert details.hiring_rate == pytest.approx(50.01)
+
+
 def test_parse_client_identity_and_payment_verification():
     html = """
     <div class="panel">

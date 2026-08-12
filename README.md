@@ -8,8 +8,10 @@ MostaQL is a specialized job scraping and notification system designed to monito
 
 ### Core Logic & Scraping
 
-*   **Smart Polling**: Optimizes bandwidth by checking the newest job ID first. Full scraping only occurs when new data is detected.
+*   **Complete Polling**: Scans each category listing (including bounded pagination) every poll so multiple projects published in the same minute are not hidden behind an unchanged first row. Normal polls stop after the first already-known page to limit traffic.
+*   **Stable Project Identity**: Deduplicates by the canonical project URL, so different projects with the same title are retained.
 *   **Hiring Rate Enrichment**: Fetches individual job pages to parse hiring rates (budget/success score).
+*   **Precise Rate Filters**: Minimum hiring rates accept hundredths (for example, `50.01%`) and match inclusively (`rate >= minimum`).
 *   **Anti-Ban Strategy**: Implements User-Agent rotation, random delays, and connection validation to maintain access reliability.
 
 ### Notification Architecture
@@ -78,7 +80,9 @@ The system is configured via environment variables. Copy `.env.example` to `.env
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `SCRAPER_INTERVAL_MINUTES` | Time between full scrapes | `30` |
-| `SCRAPER_POLL_INTERVAL_MINUTES` | Time between "newest ID" checks | `2` |
+| `SCRAPER_POLL_INTERVAL_MINUTES` | Time between complete category listing polls (the first poll starts immediately) | `2` |
+| `SCRAPER_POLL_INTERVAL_SECONDS` | Optional fast-alert override for the poll interval; takes precedence when set | unset |
+| `SCRAPER_MAX_PAGES` | Maximum listing pages scanned per category and poll | `10` |
 | `EMAIL_PROVIDER` | `gmail`, `brevo`, or `alternate` | `gmail` |
 | `TELEGRAM_BOT_TOKEN` | Your Telegram Bot Token | Required |
 | `DATABASE_URL` | SQLite connection string | `sqlite:///./data/mostaql.db` |

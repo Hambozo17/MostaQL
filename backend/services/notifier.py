@@ -208,6 +208,7 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
     db = SessionLocal()
     queued_notifications = 0
     queued_telegram = 0
+    matched_user_jobs = 0
     try:
         category = db.query(Category).filter(Category.id == category_id).first()
         if not category:
@@ -226,6 +227,7 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
             filtered_jobs = _filter_jobs_for_user(user, new_jobs)
             if not filtered_jobs:
                 continue
+            matched_user_jobs += len(filtered_jobs)
             user_job_map[user.id] = filtered_jobs
             
             for job in filtered_jobs:
@@ -303,6 +305,8 @@ def process_new_jobs(new_jobs: List[Job], category_id: int) -> Dict[str, int]:
             email_task_queue.enqueue(task)
 
         logger.info(
+            f"Evaluated {len(new_jobs)} new jobs for {len(users)} subscribers: "
+            f"{matched_user_jobs} matching user-project pairs. "
             f"Queued {len(tasks)} emails, {queued_telegram} Telegram messages "
             f"({queued_notifications} notifications) for category {category.name}"
         )

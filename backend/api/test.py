@@ -13,7 +13,11 @@ from bs4 import BeautifulSoup
 
 from backend.scheduler import run_scraper_job
 from backend.database import get_db, Job, Category
-from backend.services.scraper import quick_check_category, scrape_category_with_logging, _job_exists_in_db
+from backend.services.scraper import (
+    quick_check_category,
+    _job_exists_in_db,
+    poll_category,
+)
 from backend.services.notifier import process_new_jobs
 
 router = APIRouter()
@@ -290,8 +294,8 @@ async def test_quick_check(category_id: int, db: Session = Depends(get_db)):
 @router.post("/test-poll/{category_id}")
 async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
     """
-    Test polling for a specific category
-    Runs quick check + full scrape if needed, returns results
+    Test polling for a specific category.
+    Runs the same complete listing scan used by the scheduler.
     """
     try:
         category = db.query(Category).filter(Category.id == category_id).first()
@@ -302,41 +306,20 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
             }
         
         first_job = quick_check_category(category_id, category.mostaql_url)
-        
-        if not first_job:
-            return {
-                "status": "success",
-                "category_id": category_id,
-                "category_name": category.name,
-                "quick_check_result": "no_jobs_found",
-                "full_scrape_triggered": False,
-                "new_jobs_count": 0,
-                "message": "No jobs found, skipped"
-            }
-        
-        if _job_exists_in_db(db, first_job):
-            return {
-                "status": "success",
-                "category_id": category_id,
-                "category_name": category.name,
-                "quick_check_result": "unchanged",
-                "full_scrape_triggered": False,
-                "new_jobs_count": 0,
-                "message": "First job unchanged, skipped full scrape"
-            }
-        
-        logger.info(f"🧪 Test: New job detected for category {category.name}, triggering full scrape")
-        new_jobs = scrape_category_with_logging(category_id)
+        logger.info(
+            f"🧪 Test: scanning the complete listing for category {category.name}"
+        )
+        new_jobs = poll_category(category_id)
         
         return {
             "status": "success",
             "category_id": category_id,
             "category_name": category.name,
-            "quick_check_result": "new_job_detected",
+            "quick_check_result": "sampled_first_row" if first_job else "no_first_row",
             "first_job": {
                 "title": first_job['title'][:50],
                 "url": first_job['url'][:80]
-            },
+            } if first_job else None,
             "full_scrape_triggered": True,
             "new_jobs_count": len(new_jobs),
             "new_jobs": [
@@ -347,7 +330,7 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
                 }
                 for job in new_jobs[:10]
             ],
-            "message": f"Found {len(new_jobs)} new jobs"
+            "message": f"Complete listing scan found {len(new_jobs)} new jobs"
         }
         
     except Exception as e:
@@ -361,8 +344,11 @@ async def test_poll_category(category_id: int, db: Session = Depends(get_db)):
 @router.get("/test-poll-all")
 async def test_poll_all(db: Session = Depends(get_db)):
     """
-    Test polling for all categories (like the scheduler does)
-    Shows which categories would be skipped vs scraped
+    Inspect all categories without sending notifications.
+
+    The scheduler no longer decides from one first-row project, so this
+    endpoint reports the sample row only and points operators to
+    ``POST /api/test/trigger-scraper`` for a real scan.
     """
     try:
         categories = db.query(Category).all()
@@ -374,39 +360,21 @@ async def test_poll_all(db: Session = Depends(get_db)):
             }
         
         results = []
-        skipped = 0
-        scraped = 0
+        sampled = 0
         
         for category in categories:
             try:
                 first_job = quick_check_category(category.id, category.mostaql_url)
-                
-                if not first_job:
-                    results.append({
-                        "category_id": category.id,
-                        "category_name": category.name,
-                        "action": "skipped",
-                        "reason": "no_jobs_found"
-                    })
-                    skipped += 1
-                    continue
-                
-                if _job_exists_in_db(db, first_job):
-                    results.append({
-                        "category_id": category.id,
-                        "category_name": category.name,
-                        "action": "skipped",
-                        "reason": "unchanged"
-                    })
-                    skipped += 1
-                else:
-                    results.append({
-                        "category_id": category.id,
-                        "category_name": category.name,
-                        "action": "would_scrape",
-                        "reason": "new_job_detected"
-                    })
-                    scraped += 1
+                results.append({
+                    "category_id": category.id,
+                    "category_name": category.name,
+                    "action": "ready_for_full_listing_scan",
+                    "sample_first_job": {
+                        "title": first_job["title"][:50],
+                        "url": first_job["url"][:80],
+                    } if first_job else None,
+                })
+                sampled += 1
                     
             except Exception as e:
                 results.append({
@@ -419,10 +387,9 @@ async def test_poll_all(db: Session = Depends(get_db)):
         return {
             "status": "success",
             "total_categories": len(categories),
-            "skipped": skipped,
-            "would_scrape": scraped,
+            "sampled": sampled,
             "results": results,
-            "message": f"Would skip {skipped} categories, scrape {scraped} categories"
+            "message": "The scheduler scans every category listing; use POST /api/test/trigger-scraper to execute it"
         }
         
     except Exception as e:
@@ -487,4 +454,3 @@ async def test_send_email(request: TestEmailRequest, db: Session = Depends(get_d
             "status": "error",
             "message": str(e)
         }
-
