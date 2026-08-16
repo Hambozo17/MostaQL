@@ -9,6 +9,7 @@ MostaQL is a specialized job scraping and notification system designed to monito
 ### Core Logic & Scraping
 
 *   **Complete Polling**: Scans each category listing (including bounded pagination) every poll so multiple projects published in the same minute are not hidden behind an unchanged first row. Normal polls stop after the first already-known page to limit traffic.
+*   **Near-Real-Time Alerts**: Polling starts at application startup and repeats every two minutes by default. Deployments can set `SCRAPER_POLL_INTERVAL_SECONDS` (minimum five seconds) for a faster cycle; Mostaql does not provide a push webhook, so delivery is not zero-latency.
 *   **Stable Project Identity**: Deduplicates by the canonical project URL, so different projects with the same title are retained.
 *   **Hiring Rate Enrichment**: Fetches individual job pages to parse hiring rates (budget/success score).
 *   **Precise Rate Filters**: Minimum hiring rates accept hundredths (for example, `50.01%`) and match inclusively (`rate >= minimum`).

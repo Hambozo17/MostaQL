@@ -111,10 +111,10 @@ def get_unsubscribe_email_html(unsubscribe_url: str) -> str:
 </head>
 <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; direction: rtl; text-align: right;">
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; padding: 40px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-        <h2 style="color: #2c3e50; margin-bottom: 20px;">إلغاء الاشتراك</h2>
-        <p style="color: #555; line-height: 1.6; font-size: 16px;">لقد طلبت إلغاء الاشتراك من خدمة إشعارات مستقل. لإتمام العملية، يرجى النقر على الزر أدناه:</p>
-        <a href="{unsubscribe_url}" style="display: inline-block; background-color: #e74c3c; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold;">تأكيد إلغاء الاشتراك</a>
-        <p style="color: #555; line-height: 1.6; font-size: 16px;">إذا لم تطلب هذا الإجراء، يمكنك تجاهل هذه الرسالة.</p>
+        <h2 style="color: #2c3e50; margin-bottom: 20px;">إدارة الاشتراك</h2>
+        <p style="color: #555; line-height: 1.6; font-size: 16px;">استخدم الرابط أدناه لإدارة قنوات التنبيه والفلاتر الذكية والعملاء السابقين، أو إلغاء الاشتراك:</p>
+        <a href="{unsubscribe_url}" style="display: inline-block; background-color: #2cabe3; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold;">إدارة التفضيلات</a>
+        <p style="color: #555; line-height: 1.6; font-size: 16px;">إذا لم تطلب هذا الرابط، يمكنك تجاهل هذه الرسالة.</p>
     </div>
 </body>
 </html>"""

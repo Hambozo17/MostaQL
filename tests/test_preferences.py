@@ -34,6 +34,14 @@ def test_confirmation_page_exposes_preferences_entry_point():
     assert "/api/unsubscribe/" in html
 
 
+def test_landing_page_exposes_existing_subscription_preferences_link():
+    template = Path(__file__).parents[1] / "backend" / "templates" / "subscribe.html"
+    html = template.read_text(encoding="utf-8")
+
+    assert 'href="/unsubscribe-request.html"' in html
+    assert "إدارة التفضيلات والتنبيهات" in html
+
+
 def test_subscription_persists_and_updates_smart_preferences():
     session = make_session()
     service = SubscriptionService(session)
