@@ -77,7 +77,7 @@ MostaQL is a specialized job scraping and notification system designed to monito
 
 ### Follow clients from past work
 
-Open the preferences link from any notification, expand **عملائي السابقون**, and add the client's Mostaql profile URL (for example, `https://mostaql.com/u/client-name`). The watcher uses the canonical client profile URL, so trailing slashes and profile sub-pages are handled consistently. The next project published by that client will notify you even when it belongs to a category you did not select.
+After confirming your email, click **إدارة التفضيلات والعملاء السابقين** on the confirmation page. You can also use the same button in any notification email. Then expand **عملائي السابقون** and add the client's Mostaql profile URL (for example, `https://mostaql.com/u/client-name`). The watcher uses the canonical client profile URL, so trailing slashes and profile sub-pages are handled consistently. The next project published by that client will notify you even when it belongs to a category you did not select.
 
 The alert worker fetches Mostaql pages itself with a public HTTP request; it does not use the cookies or login state of your Chrome/in-app browser. Logging in can help you open a private client page manually, but signing in or out will not turn server-side alerts on or off.
 

@@ -77,7 +77,10 @@ def get_job_notifications_html(category_name: str, jobs: List[Dict[str, Any]], u
         <p style="color: #555; line-height: 1.6; font-size: 16px;">تم العثور على {len(jobs)} مشروع جديد</p>
         {jobs_html}
         <hr>
-        <small><a href="{escape(unsubscribe_url, quote=True)}" style="color: #3498db; font-weight: 600; text-decoration: none;">إلغاء الاشتراك</a></small>
+        <p style="text-align: center; margin: 20px 0 8px 0;">
+            <a href="{escape(unsubscribe_url, quote=True)}" style="display: inline-block; background: #eef8fc; color: #24566b !important; padding: 9px 16px; text-decoration: none; border-radius: 6px; font-weight: 600;">إدارة التفضيلات والعملاء السابقين</a>
+        </p>
+        <small><a href="{escape(unsubscribe_url, quote=True)}" style="color: #3498db; font-weight: 600; text-decoration: none;">إدارة التفضيلات</a></small>
     </div>
 </body>
 </html>"""
